@@ -1,0 +1,176 @@
+<!-->
+  Code developed and maintained by Sharded-Games.
+  Licensed under the GPLv3
+ 
+  @author Dave Cotterill
+
+  (c)2018 ShardedGames.com, https://github.com/sharded-gaming/opengl-cross-platform-example
+  Please keep this notice here AS IS going forward.
+  ShardedGames and the author provide no warranty and liability for the code provided AS IS.
+-->
+<project name="Build Scripts" default="all" basedir=".">
+
+    <!-- Initialisation -->
+    <target name="init">
+        <!-- Base -->
+        <property name="bin" value="${basedir}/bin"/>
+        <property name="src" value="${basedir}/src"/>
+        <property name="res" value="${basedir}/res"/>
+        <property name="tools" value="${basedir}/tools"/>
+        <property name="projects" value="${basedir}/project"/>
+
+        <!-- VCXProj -->
+        <property name="game.project.vs" value="${projects}/ShardGame.vcxproj"/>
+        <property name="core.project.vs" value="${projects}/Core.vcxproj"/>
+
+        <!-- Emcc -->
+        <property name="tools.emcc" value="${tools}/emsdk-master"/>
+		<property name="tools.emcc.folder" value="${tools.emcc}\emscripten\"/>
+        <property name="tools.emcc.exe" value="\emcc.bat"/>
+
+        <!-- Prepare Additional Ant Tasks -->
+        <taskdef classpath="${tools}/antcontrib/ant-contrib.jar" resource="net/sf/antcontrib/antcontrib.properties"/>
+        <taskdef classpath="${tools}/antcontrib/ant-contrib.jar" resource="net/sf/antcontrib/antlib.xml"/>
+
+    </target>
+
+    <!-- Prepare Emscripten -->
+    <target name="emscripten" depends="init">
+        <exec executable="${tools.emcc}\emsdk.bat" dir="${tools.emcc}">
+            <arg value="install"/>
+            <arg value="latest"/>
+        </exec>
+
+        <exec executable="${tools.emcc}\emsdk.bat" dir="${tools.emcc}">
+            <arg value="activate"/>
+            <arg value="latest"/>
+        </exec>
+
+        <exec executable="${tools.emcc}\emsdk_env.bat" dir="${tools.emcc}"/>
+    </target>
+	
+	<!-- Finds the latest installed version of emscripten for the html5 command -->
+	<target name="find-emscripten" depends="init">
+		<sort id="emcc.version.list">
+			<dirset dir="${tools.emcc.folder}" includes="*"/>
+		</sort>	
+
+		<pathconvert targetos="windows" property="emcc.version" refid="emcc.version.list"/>		
+	</target>
+
+    <!-- Parse project -->
+    <target name="parse-projects" depends="init">
+		<!-- Extract Files from Core VCXProj -->
+		<xmlproperty file="${core.project.vs}" prefix="core"/>
+		<property name="core.project.src.files" value="${core.Project.ItemGroup.ClCompile(Include)}"/>
+
+		<propertyregex property="core.src.files.csv"
+                   input="${core.project.src.files}"
+                   regexp="\.\.\\"
+                   replace=""
+                   casesensitive="false"/>
+
+		<propertyregex property="core.src.files"
+                 input="${core.src.files.csv}"
+                 regexp=","
+                 replace=" "
+                 defaultvalue="${core.src.files.csv}"
+                 casesensitive="false"/>
+
+		<!-- Extract Files from Game VCXProj -->
+        <xmlproperty file="${game.project.vs}" prefix="game"/>
+        <property name="game.project.src.files" value="${game.Project.ItemGroup.ClCompile(Include)}"/>
+
+        <propertyregex property="game.src.files.csv"
+                   input="${game.project.src.files}"
+                   regexp="\.\.\\"
+                   replace=""
+                   casesensitive="false"/>
+
+        <propertyregex property="game.src.files"
+                 input="${game.src.files.csv}"
+                 regexp=","
+                 replace=" "
+                 defaultvalue="${game.src.files.csv}"
+                 casesensitive="false"/>
+
+
+        <echo>files: ${game.src.files} ${core.src.files}</echo>
+   </target>
+
+    <!-- Build for Linux -->
+    <target name="linux" depends="init, parse-projects">
+        <propertyregex property="core.src.files.corrected"
+                   input="${core.src.files}"
+                   regexp="\\"
+                   replace="/"
+                   casesensitive="false"/>
+
+        <propertyregex property="game.src.files.corrected"
+                   input="${game.src.files}"
+                   regexp="\\"
+                   replace="/"
+                   casesensitive="false"/>
+
+        <exec executable="gcc">
+            <arg value="-std=c++11"/>
+            <arg value="-Isrc/Core"/>
+            <arg value="-Ilibs/glm"/>
+            <arg line="${core.src.files.corrected}"/>
+            <arg line="${game.src.files.corrected}"/>
+            <arg value="-g"/>
+            <arg value="-o"/>
+            <arg value="${bin}/linux.out"/>
+            <arg line="-L/usr/lib -lSDL2 -lGL -lstdc++ -lm"/>
+        </exec>
+    </target>
+
+    <!-- Build for Html5 -->
+    <target name="html5" depends="find-emscripten,init,parse-projects">
+        <copy todir="${bin}" file="${res}/index.html"/>
+
+        <exec executable="cmd">
+            <arg value="/c"/>
+            <arg value="${emcc.version}/${tools.emcc.exe}"/>
+            <arg line="${core.src.files}"/>
+            <arg line="${game.src.files}"/>
+            <arg value="-Isrc\core"/>
+            <arg value="-Ilibs\glm"/>
+            <arg value="-std=c++11"/>
+            <arg value="-s"/>
+            <arg value="WASM=1"/>
+            <arg value="-s"/>
+            <arg value="ALLOW_MEMORY_GROWTH=1"/>
+            <arg value="-s"/>
+            <arg value="USE_WEBGL2=1"/>
+            <arg value="-s"/>
+            <arg value="ASSERTIONS=1"/>
+            <arg value="-s"/>
+            <arg value="DISABLE_DEPRECATED_FIND_EVENT_TARGET_BEHAVIOR=1"/>
+            <arg value="-s"/>
+			<arg value="FETCH=1"/>
+            <arg value="-s"/>
+            <arg value="ALLOW_MEMORY_GROWTH=1"/>
+          <!--arg value="-s"/>
+            <arg value="USE_PTHREADS=1"/>
+            <arg value="-s"/>
+            <arg value="PTHREAD_POOL_SIZE=2"/-->
+            <arg value="-O3"/>
+            <arg value="-o"/>
+            <arg value="${bin}/index.js"/>
+        </exec>
+
+    </target>
+
+    <!-- Serve the files over http -->
+    <target name="serve" depends="init">
+        <exec executable="python" cwd="${bin}">  
+            <arg line="-m http.server 80"/>
+        </exec>
+    </target>
+
+    <!-- Build All -->
+    <target name="all">
+    </target>
+
+</project>
