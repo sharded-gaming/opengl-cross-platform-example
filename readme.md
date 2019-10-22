@@ -11,6 +11,10 @@ Project is seperated into 2 projects
 
 Feel free to use as a basis for your project, if you make any changes it would be nice to merge back for future users.
 
+# Information
+
+More information can be found here: http://www.shardedtools.com/code/opengl-framework/
+and more tools/code etc can be seen: http://www.shardedtools.com
 
 # Build Instructions.
 
